@@ -1,12 +1,22 @@
-"""Xmas gifts: a tiny Flask app that runs locally and as a Databricks App.
+"""Xmas gifts: a tiny Flask app that runs as a Databricks App or on any web host.
 
-Who is looking at the page is decided by the SSO headers that Databricks Apps
-put on every request (X-Forwarded-Email). Each person only ever receives their
-own personal message, and only when they actually open their gift.
+Who is looking at the page is decided by AUTH_MODE:
+
+* ``header`` (default, Databricks Apps): the SSO header X-Forwarded-Email that
+  Databricks puts on every request. It cannot be forged by the viewer.
+* ``email`` (Render and other plain hosts): the viewer types their work e-mail
+  on the first screen and the browser sends it in X-Xmas-Email. There is no
+  real authentication here, so the personal message is protected only by
+  knowing the e-mail address. ALLOWED_EMAIL_DOMAINS narrows who can ask.
+
+Either way a person only ever receives their own message, and only when they
+actually open their gift.
 """
 import json
 import os
 import re
+import time
+from collections import defaultdict, deque
 from datetime import datetime
 from pathlib import Path
 
@@ -14,11 +24,18 @@ from flask import Flask, jsonify, request, send_from_directory
 
 BASE_DIR = Path(__file__).resolve().parent
 MESSAGES_FILE = BASE_DIR / "messages.json"
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 app = Flask(__name__, static_folder=str(BASE_DIR / "static"), static_url_path="/static")
 
+_hits: dict[str, deque] = defaultdict(deque)
+
 
 # --------------------------------------------------------------------------- helpers
+def auth_mode() -> str:
+    return "email" if os.getenv("AUTH_MODE", "header").strip().lower() == "email" else "header"
+
+
 def expires_at() -> datetime:
     """Moment after which the gifts are gone (default: 1 Jan 2027, Manila time)."""
     return datetime.fromisoformat(os.getenv("EXPIRES_AT", "2027-01-01T00:00:00+08:00"))
@@ -37,21 +54,59 @@ def load_data() -> dict:
 
 
 def current_email() -> str:
-    """E-mail of the signed-in viewer, lower-cased ('' when unknown).
+    """E-mail of the viewer, lower-cased ('' when unknown).
 
     The ?as= override only exists for local testing and only works when the
-    environment variable XMAS_DEV=1 is set. It is never set on Databricks.
+    environment variable XMAS_DEV=1 is set. It is never set in production.
     """
     email = ""
     if os.getenv("XMAS_DEV") == "1":
         email = request.args.get("as", "")
     if not email:
-        email = (
-            request.headers.get("X-Forwarded-Email")
-            or request.headers.get("X-Forwarded-Preferred-Username")
-            or ""
-        )
+        if auth_mode() == "email":
+            email = request.headers.get("X-Xmas-Email", "")
+        else:  # only the SSO headers count here; X-Xmas-Email is deliberately ignored
+            email = (
+                request.headers.get("X-Forwarded-Email")
+                or request.headers.get("X-Forwarded-Preferred-Username")
+                or ""
+            )
     return email.strip().lower()
+
+
+def domain_ok(email: str) -> bool:
+    allowed = [d.strip().lower().lstrip("@") for d in os.getenv("ALLOWED_EMAIL_DOMAINS", "").split(",") if d.strip()]
+    return not allowed or email.rsplit("@", 1)[-1] in allowed
+
+
+def rate_limited() -> bool:
+    """Crude per-IP flood guard (email mode only). Generous: an office may share one IP."""
+    limit = int(os.getenv("RATE_LIMIT_PER_MIN", "300"))
+    ip = (request.access_route[0] if request.access_route else request.remote_addr) or "?"
+    now = time.monotonic()
+    q = _hits[ip]
+    while q and now - q[0] > 60:
+        q.popleft()
+    if len(q) >= limit:
+        return True
+    q.append(now)
+    return False
+
+
+def resolve_viewer():
+    """Return (email, error_response). error_response is None when all is fine."""
+    if auth_mode() != "email":
+        return current_email(), None
+    if rate_limited():
+        return "", (jsonify(error="rate_limited"), 429)
+    email = current_email()
+    if not email:
+        return "", None  # the caller asks for the e-mail
+    if not EMAIL_RE.match(email):
+        return "", (jsonify(error="invalid_email"), 400)
+    if not domain_ok(email):
+        return "", (jsonify(error="domain"), 403)
+    return email, None
 
 
 def guess_name(email: str) -> str:
@@ -71,6 +126,7 @@ def lookup(email: str, data: dict) -> tuple[str, str]:
 @app.after_request
 def add_headers(resp):
     resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Referrer-Policy"] = "no-referrer"
     if request.path.startswith("/api/") or request.path == "/":
         resp.headers["Cache-Control"] = "no-store"
     return resp
@@ -92,10 +148,15 @@ def api_state():
 
     The personal message is NOT part of this response; see /api/gift.
     """
+    email, err = resolve_viewer()
+    if err:
+        return err
     data = load_data()
-    name, _ = lookup(current_email(), data)
+    name, _ = lookup(email, data)
     if is_expired():
         return jsonify(expired=True, name=name, closing=data["closing"])
+    if auth_mode() == "email" and not email:
+        return jsonify(expired=False, needs_email=True)
     return jsonify(
         expired=False,
         name=name,
@@ -108,10 +169,14 @@ def api_state():
 @app.get("/api/gift")
 def api_gift():
     """The viewer's personal message (only theirs, only before expiry)."""
+    email, err = resolve_viewer()
+    if err:
+        return err
     if is_expired():
         return jsonify(error="expired"), 410
-    data = load_data()
-    name, message = lookup(current_email(), data)
+    if auth_mode() == "email" and not email:
+        return jsonify(error="email_required"), 401
+    name, message = lookup(email, load_data())
     return jsonify(name=name, message=message)
 
 

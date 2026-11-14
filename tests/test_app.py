@@ -12,10 +12,18 @@ def hdr(email):
     return {"X-Forwarded-Email": email}
 
 
+ENV_KEYS = ("XMAS_DEV", "EXPIRES_AT", "AUTH_MODE", "ALLOWED_EMAIL_DOMAINS", "RATE_LIMIT_PER_MIN")
+
+
+def clean_env():
+    for k in ENV_KEYS:
+        os.environ.pop(k, None)
+    xmas._hits.clear()
+
+
 class AppTests(unittest.TestCase):
     def setUp(self):
-        os.environ.pop("XMAS_DEV", None)
-        os.environ.pop("EXPIRES_AT", None)
+        clean_env()
         self.c = xmas.app.test_client()
 
     def test_known_user_gets_own_name_and_message(self):
@@ -94,6 +102,83 @@ class AppTests(unittest.TestCase):
         for email, entry in data["people"].items():
             self.assertEqual(email, email.lower())
             self.assertTrue(entry.get("message"), email)
+
+
+def em(email):
+    return {"X-Xmas-Email": email}
+
+
+class EmailModeTests(unittest.TestCase):
+    """AUTH_MODE=email: used on plain hosts such as Render, where there is no SSO."""
+
+    def setUp(self):
+        clean_env()
+        os.environ["AUTH_MODE"] = "email"
+        self.c = xmas.app.test_client()
+
+    def tearDown(self):
+        clean_env()
+
+    def test_without_email_the_client_is_asked_for_one(self):
+        s = self.c.get("/api/state").get_json()
+        self.assertTrue(s["needs_email"])
+        self.assertNotIn("gifts", s)
+        self.assertNotIn("name", s)
+
+    def test_with_email_returns_name_and_gifts(self):
+        s = self.c.get("/api/state", headers=em("Maria.Santos@Example.com")).get_json()
+        self.assertEqual(s["name"], "Maria")
+        self.assertEqual(len(s["gifts"]), 4)
+
+    def test_personal_message_by_typed_email_and_isolation(self):
+        a = self.c.get("/api/gift", headers=em("maria.santos@example.com")).get_json()
+        b = self.c.get("/api/gift", headers=em("juan.delacruz@example.com")).get_json()
+        self.assertIn("Monday calls", a["message"])
+        self.assertNotIn("Monday calls", b["message"])
+
+    def test_gift_requires_email(self):
+        r = self.c.get("/api/gift")
+        self.assertEqual(r.status_code, 401)
+
+    def test_sso_header_is_not_used_in_email_mode(self):
+        s = self.c.get("/api/state", headers=hdr("maria.santos@example.com")).get_json()
+        self.assertTrue(s["needs_email"])
+
+    def test_invalid_email_rejected(self):
+        for bad in ("maria", "a@b", "@example.com", "ma ria@example.com"):
+            r = self.c.get("/api/state", headers=em(bad))
+            self.assertEqual(r.status_code, 400, bad)
+
+    def test_domain_restriction(self):
+        os.environ["ALLOWED_EMAIL_DOMAINS"] = "corp.com, @example.com"
+        self.assertEqual(self.c.get("/api/state", headers=em("x@gmail.com")).status_code, 403)
+        self.assertEqual(self.c.get("/api/gift", headers=em("x@gmail.com")).status_code, 403)
+        self.assertEqual(self.c.get("/api/state", headers=em("maria.santos@example.com")).status_code, 200)
+        self.assertEqual(self.c.get("/api/state", headers=em("pedro@corp.com")).status_code, 200)
+
+    def test_rate_limit(self):
+        os.environ["RATE_LIMIT_PER_MIN"] = "3"
+        codes = [self.c.get("/api/state", headers=em("pedro@corp.com")).status_code for _ in range(5)]
+        self.assertEqual(codes, [200, 200, 200, 429, 429])
+
+    def test_expired_even_without_email(self):
+        os.environ["EXPIRES_AT"] = "2020-01-01T00:00:00+08:00"
+        s = self.c.get("/api/state").get_json()
+        self.assertTrue(s["expired"])
+        self.assertEqual(self.c.get("/api/gift", headers=em("pedro@corp.com")).status_code, 410)
+
+
+class HeaderModeSpoofTests(unittest.TestCase):
+    """On Databricks a viewer must not be able to impersonate anyone with X-Xmas-Email."""
+
+    def setUp(self):
+        clean_env()
+        self.c = xmas.app.test_client()
+
+    def test_xmas_email_header_ignored_in_header_mode(self):
+        g = self.c.get("/api/gift", headers={**hdr("juan.delacruz@example.com"), **em("maria.santos@example.com")}).get_json()
+        self.assertNotIn("Monday calls", g["message"])
+        self.assertIn("Juan", g["name"])
 
 
 if __name__ == "__main__":

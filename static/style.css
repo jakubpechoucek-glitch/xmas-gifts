@@ -158,6 +158,22 @@ main {
 .btn:active { transform: translateY(1px); }
 .btn:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.intro-form { display: grid; gap: 12px; justify-items: center; margin: 0 auto 1em; }
+.intro-form input {
+  width: min(86vw, 340px);
+  padding: 0.85em 1em;
+  border-radius: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--ink);
+  font: 500 1rem system-ui, sans-serif;
+  text-align: center;
+}
+.intro-form input:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+#form-error { min-height: 1.3em; margin: 0; color: #ffb4b4; font-size: 0.95rem; }
+.link-btn { background: none; border: 0; color: rgba(255, 255, 255, 0.7); font: inherit; font-size: 0.9rem; text-decoration: underline; cursor: pointer; padding: 4px; }
+
 .card {
   width: min(92vw, 430px);
   max-height: 82dvh;

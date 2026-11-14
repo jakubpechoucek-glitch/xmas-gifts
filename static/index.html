@@ -69,7 +69,14 @@
       <div class="intro-emoji" aria-hidden="true">🎄</div>
       <h1 id="intro-title">Maligayang Pasko!</h1>
       <p id="intro-text">Loading your surprise…</p>
+      <form id="intro-form" class="intro-form" hidden novalidate>
+        <label for="email" class="sr-only">Work e-mail</label>
+        <input id="email" name="email" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="you@company.com" required>
+        <p id="form-error" role="alert"></p>
+        <button class="btn" type="submit">Find my gift 🎁</button>
+      </form>
       <button id="intro-btn" class="btn" type="button" hidden>Open the surprise ✨</button>
+      <p><button id="not-you" class="link-btn" type="button" hidden></button></p>
     </div>
   </div>
 

@@ -5,8 +5,20 @@
   const SVGNS = "http://www.w3.org/2000/svg";
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-  // Forward the page's query string (only used for local testing with XMAS_DEV=1; ignored by the server otherwise).
-  const api = (path) => fetch(path + window.location.search, { cache: "no-store" });
+  // On plain hosts (AUTH_MODE=email) the viewer types their work e-mail; it is kept for this tab only.
+  const EMAIL_KEY = "xmas-email";
+  const emailStore = {
+    get() { try { return sessionStorage.getItem(EMAIL_KEY) || ""; } catch (e) { return ""; } },
+    set(v) { try { sessionStorage.setItem(EMAIL_KEY, v); } catch (e) { /* storage may be blocked */ } },
+    clear() { try { sessionStorage.removeItem(EMAIL_KEY); } catch (e) { /* ignore */ } },
+  };
+  // The page's query string is forwarded for local testing (XMAS_DEV=1 only; ignored by the server otherwise).
+  const api = (path) => {
+    const headers = {};
+    const email = emailStore.get();
+    if (email) headers["X-Xmas-Email"] = email;
+    return fetch(path + window.location.search, { cache: "no-store", headers });
+  };
 
   function svgEl(name, attrs, parent) {
     const n = document.createElementNS(SVGNS, name);
@@ -286,15 +298,48 @@
     const introText = $("#intro-text");
     const introBtn = $("#intro-btn");
 
+    function askEmail(errorMsg) {
+      const form = $("#intro-form");
+      const input = $("#email");
+      introTitle.textContent = "Maligayang Pasko!";
+      introText.textContent = "Enter your work e-mail to find your gift under the tree.";
+      $("#form-error").textContent = errorMsg || "";
+      form.hidden = false;
+      input.value = "";
+      input.focus();
+      form.onsubmit = (e) => {
+        e.preventDefault();
+        const v = input.value.trim().toLowerCase();
+        if (!input.checkValidity() || !v) {
+          $("#form-error").textContent = "Please enter a valid e-mail address.";
+          return;
+        }
+        emailStore.set(v);
+        form.hidden = true;
+        introText.textContent = "Wrapping your gift…";
+        main();
+      };
+    }
+
     let state;
     try {
       const r = await api("/api/state");
+      if (r.status === 400 || r.status === 403) {
+        emailStore.clear();
+        askEmail(r.status === 403 ? "Please use your work e-mail address." : "That doesn't look like an e-mail address.");
+        return;
+      }
+      if (r.status === 429) {
+        emailStore.clear();
+        askEmail("Too many attempts. Please wait a minute and try again.");
+        return;
+      }
       if (!r.ok) throw new Error(String(r.status));
       state = await r.json();
     } catch (e) {
       $(".intro-emoji").textContent = "🎁";
       introTitle.textContent = "Oops!";
-      introText.textContent = "The gifts could not be loaded.\nPlease check your VPN connection and refresh the page.";
+      introText.textContent = "The gifts could not be loaded.\nPlease check your connection and refresh the page.";
       return;
     }
 
@@ -304,6 +349,8 @@
       introText.textContent = state.closing.text;
       return;
     }
+
+    if (state.needs_email) { askEmail(); return; }
 
     // ---- build the scene
     const gifts = state.gifts.slice(0, 4);
@@ -367,6 +414,7 @@
         try {
           const r = await api("/api/gift");
           if (r.status === 410) { location.reload(); return; }
+          if (r.status === 400 || r.status === 401 || r.status === 403) { emailStore.clear(); location.reload(); return; }
           if (!r.ok) throw new Error(String(r.status));
           const j = await r.json();
           content = { icon: "💌", title: `For you, ${j.name}`, text: j.message };
@@ -430,6 +478,12 @@
     introText.textContent = "Something is waiting for you under the tree.";
     introBtn.hidden = false;
     introBtn.focus();
+    if (emailStore.get()) {
+      const notYou = $("#not-you");
+      notYou.textContent = `Not ${state.name}? Use a different e-mail`;
+      notYou.hidden = false;
+      notYou.addEventListener("click", () => { emailStore.clear(); location.reload(); }, { once: true });
+    }
     introBtn.addEventListener("click", () => {
       // SVG elements have no .hidden property, so remove the attribute explicitly
       $("#scene").removeAttribute("hidden");
