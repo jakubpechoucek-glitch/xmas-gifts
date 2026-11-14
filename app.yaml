@@ -1,0 +1,3 @@
+# Databricks App definition. Databricks installs requirements.txt automatically
+# and injects the port in DATABRICKS_APP_PORT (read in app.py).
+command: ["python", "app.py"]

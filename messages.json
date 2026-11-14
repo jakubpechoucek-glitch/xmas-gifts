@@ -1,0 +1,56 @@
+{
+  "_readme": "Edit this file. 'people' is keyed by the work e-mail (lower-case) that Databricks SSO reports. Anyone not listed gets 'default'. Use \\n for line breaks in messages.",
+
+  "people": {
+    "maria.santos@example.com": {
+      "name": "Maria",
+      "message": "Maria,\n\nthank you for the patience, the laughs and for always asking the one question nobody else dared to ask.\n\nI'm taking the memory of our Monday calls with me.\n\nMaligayang Pasko!\nJakub"
+    },
+    "juan.delacruz@example.com": {
+      "name": "Juan",
+      "message": "Juan,\n\nthank you for making the hard days lighter. Keep building, you're going to go far.\n\nMaligayang Pasko!\nJakub"
+    },
+    "ana.reyes@example.com": {
+      "name": "Ana",
+      "message": "Ana,\n\nthank you for being the person I could always count on. The team is lucky to have you.\n\nMaligayang Pasko!\nJakub"
+    }
+  },
+
+  "default": {
+    "message": "Dear {name},\n\nit has been a pleasure working with you. Thank you for everything I learned from you and for all the good moments along the way.\n\nWishing you and your family a peaceful, happy Christmas and a great 2027.\n\nMaligayang Pasko!\nJakub"
+  },
+
+  "gifts": [
+    {
+      "icon": "🧘",
+      "title": "A gift of rest",
+      "text": "May your holidays be full of sleep, good food and zero urgent emails."
+    },
+    {
+      "icon": "🍰",
+      "title": "Bibingka & puto bumbong",
+      "text": "May every Simbang Gabi end with something warm, sweet and shared with the people you love."
+    },
+    {
+      "icon": "😄",
+      "title": "A gift of laughter",
+      "text": "May 2027 bring fewer meetings, longer lunches and more reasons to laugh at work."
+    },
+    {
+      "icon": "🚀",
+      "title": "A gift of growth",
+      "text": "Wishing you new challenges, big wins and the recognition you deserve."
+    }
+  ],
+
+  "star": {
+    "icon": "🏆",
+    "title": "Achievement unlocked: Santa's Helper",
+    "text": "You found every gift under the tree!\n\nThank you all for the years together. Keep in touch, you know where to find me.\n\nSalamat po, and Merry Christmas!\nJakub"
+  },
+
+  "closing": {
+    "title": "The gifts have been delivered 🎁",
+    "text": "This little tree has done its job. Thank you for stopping by.\n\nSee you in 2027, and Maligayang Pasko!\nJakub"
+  }
+}
