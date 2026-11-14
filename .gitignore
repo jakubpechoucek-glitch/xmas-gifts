@@ -5,3 +5,4 @@ __pycache__/
 .DS_Store
 .databricks/
 shots/
+node_modules/

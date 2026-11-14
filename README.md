@@ -77,3 +77,9 @@ Po 31. 12. službu na Renderu smaž nebo suspendni, ať se dál neplatí.
 - [ ] Ověřit, že mají všichni příjemci přístup do workspace (jinak neotevřou).
 - [ ] Schválit s adminem/šéfem použití firemního compute.
 - [ ] Do mailu napsat, že dárky jsou k vyzvednutí do konce roku.
+
+## Frontend (3D)
+
+Scéna je Three.js (bloom, shadery pro sníh a světýlka), animace gsap, konfety canvas-confetti.
+Zdroj je v `src/`, do `static/app.js` se bundluje příkazem `npm install && npm run build`
+(`static/app.js` je commitnutý, takže Render nic stavět nemusí).
